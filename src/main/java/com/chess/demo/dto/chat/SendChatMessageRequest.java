@@ -1,0 +1,9 @@
+package com.chess.demo.dto.chat;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
+public record SendChatMessageRequest(
+        @NotBlank @Size(max = 500) String message
+) {
+}
