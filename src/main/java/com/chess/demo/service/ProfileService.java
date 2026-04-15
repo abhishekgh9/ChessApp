@@ -77,9 +77,9 @@ public class ProfileService {
         );
         Map<String, Integer> stats = new LinkedHashMap<>();
         stats.put("gamesPlayed", (int) gameRepository.countByWhitePlayerOrBlackPlayer(user, user));
-        stats.put("wins", user.getWinsCount());
-        stats.put("losses", user.getLossesCount());
-        stats.put("draws", user.getDrawsCount());
+        stats.put("wins", (int) gameRepository.countWinsForUser(user));
+        stats.put("losses", (int) gameRepository.countLossesForUser(user));
+        stats.put("draws", (int) gameRepository.countDrawsForUser(user));
 
         return new ProfileSummaryResponse(
                 userMapper.toUserSummary(user),

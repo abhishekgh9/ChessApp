@@ -64,12 +64,12 @@ class AnalysisServiceTest {
 
         @Override
         public PositionInfo describePosition(List<String> uciMoves) {
-            return new PositionInfo("startpos", Set.of());
+            return new PositionInfo("startpos", Set.of(), false);
         }
 
         @Override
         public PositionInfo describeFen(String fen) {
-            return new PositionInfo(fen, Set.of());
+            return new PositionInfo(fen, Set.of(), false);
         }
 
         @Override

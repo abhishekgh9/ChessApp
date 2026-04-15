@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -116,6 +117,7 @@ public class GameService {
         }
 
         applyMove(game, user, expectedTurn, from, to, promotion, fenAfter);
+        finalizeIfTerminal(game);
         if (Boolean.TRUE.equals(game.getBotGame())) {
             runBotTurnIfNeeded(game, user);
         }
@@ -293,6 +295,9 @@ public class GameService {
         move.setFenAfter(fenAfter);
         gameMoveRepository.save(move);
 
+        // Decrement time for the player who just moved
+        decrementTimeForMove(game, expectedTurn);
+
         List<String> history = readHistory(game);
         history.add(san);
         game.setHistoryJson(writeHistory(history));
@@ -303,6 +308,55 @@ public class GameService {
         game.setLastMoveSan(san);
         game.setDrawOfferedBy(null);
         game.setTurnColor("white".equals(expectedTurn) ? "black" : "white");
+    }
+
+    private void decrementTimeForMove(Game game, String moveColor) {
+        List<GameMove> allMoves = gameMoveRepository.findByGameOrderByMoveNumberAsc(game);
+        
+        if (allMoves.isEmpty()) {
+            // First move - no time passed
+            return;
+        }
+        
+        // Find the last move by the opponent
+        GameMove lastOpponentMove = null;
+        String opponentColor = "white".equals(moveColor) ? "black" : "white";
+        
+        for (int i = allMoves.size() - 1; i >= 0; i--) {
+            GameMove m = allMoves.get(i);
+            if (opponentColor.equals(m.getMoveColor())) {
+                lastOpponentMove = m;
+                break;
+            }
+        }
+        
+        if (lastOpponentMove == null) {
+            // This is the first move after game creation
+            // Time elapsed from game creation to now
+            Instant startTime = game.getCreatedAt();
+            long elapsedSeconds = ChronoUnit.SECONDS.between(startTime, Instant.now());
+            decrementPlayerTime(game, moveColor, elapsedSeconds);
+        } else {
+            // Time elapsed from opponent's last move to now
+            long elapsedSeconds = ChronoUnit.SECONDS.between(lastOpponentMove.getCreatedAt(), Instant.now());
+            decrementPlayerTime(game, moveColor, elapsedSeconds);
+        }
+    }
+
+    private void decrementPlayerTime(Game game, String playerColor, long elapsedSeconds) {
+        if ("white".equals(playerColor)) {
+            Integer currentTime = game.getWhiteTimeRemaining();
+            if (currentTime != null) {
+                int newTime = Math.max(0, (int) (currentTime - elapsedSeconds));
+                game.setWhiteTimeRemaining(newTime);
+            }
+        } else {
+            Integer currentTime = game.getBlackTimeRemaining();
+            if (currentTime != null) {
+                int newTime = Math.max(0, (int) (currentTime - elapsedSeconds));
+                game.setBlackTimeRemaining(newTime);
+            }
+        }
     }
 
     private void runBotTurnIfNeeded(Game game, User user) {
@@ -322,6 +376,7 @@ public class GameService {
         List<String> moves = buildUciMoves(game);
         String bestMove = chessEngineService.findBestMove(moves, game.getBotLevel() == null ? 1 : game.getBotLevel());
         if (bestMove == null || bestMove.length() < 4) {
+            finalizeIfTerminal(game);
             return;
         }
 
@@ -330,6 +385,29 @@ public class GameService {
         String promotion = bestMove.length() > 4 ? bestMove.substring(4) : null;
         String fenAfter = chessEngineService.describePosition(appendUciMove(game, bestMove)).fen();
         applyMove(game, user, expectedTurn, from, to, promotion, fenAfter);
+        finalizeIfTerminal(game);
+    }
+
+    private void finalizeIfTerminal(Game game) {
+        if (!"ACTIVE".equals(game.getStatus())) {
+            return;
+        }
+
+        ChessEngineService.PositionInfo positionInfo = chessEngineService.describePosition(buildUciMoves(game));
+        if (positionInfo.legalMoves() != null && !positionInfo.legalMoves().isEmpty()) {
+            return;
+        }
+
+        game.setStatus("FINISHED");
+        game.setEndedAt(Instant.now());
+        game.setDrawOfferedBy(null);
+        if (positionInfo.inCheck()) {
+            game.setResult("white".equals(game.getTurnColor()) ? "BLACK_WIN" : "WHITE_WIN");
+            game.setResultReason("CHECKMATE");
+        } else {
+            game.setResult("DRAW");
+            game.setResultReason("STALEMATE");
+        }
     }
 
     private List<String> buildUciMoves(Game game) {

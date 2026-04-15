@@ -25,9 +25,9 @@ public class BotService {
         game.setBotGame(true);
         int requestedLevel = request == null || request.level() == null ? 1 : request.level();
         game.setBotLevel(Math.max(1, Math.min(10, requestedLevel)));
-        game.setTimeControl(user.getSettings().getDefaultTimeControl());
-        game.setWhiteTimeRemaining(600);
-        game.setBlackTimeRemaining(600);
+        
+        String timeControl = user.getSettings().getDefaultTimeControl();
+        configureGameTime(game, timeControl);
 
         String color = request == null || request.color() == null ? "white" : request.color().trim().toLowerCase();
         if ("black".equals(color)) {
@@ -42,5 +42,23 @@ public class BotService {
         return "black".equals(color)
                 ? gameService.runBotTurnIfNeeded(saved.getId(), user)
                 : gameService.toResponse(saved);
+    }
+
+    private void configureGameTime(Game game, String timeControl) {
+        String requestedTimeControl = timeControl == null || timeControl.isBlank() ? "10+0" : timeControl.trim();
+        game.setTimeControl(requestedTimeControl);
+        int startingTime = parseStartingSeconds(requestedTimeControl);
+        game.setWhiteTimeRemaining(startingTime);
+        game.setBlackTimeRemaining(startingTime);
+    }
+
+    private int parseStartingSeconds(String timeControl) {
+        String[] parts = timeControl.split("\\+");
+        try {
+            int minutes = Integer.parseInt(parts[0]);
+            return minutes * 60;
+        } catch (Exception exception) {
+            return 600;
+        }
     }
 }

@@ -15,7 +15,7 @@ public interface ChessEngineService {
 
     AnalysisInfo analyzeFen(String fen);
 
-    record PositionInfo(String fen, Set<String> legalMoves) {
+    record PositionInfo(String fen, Set<String> legalMoves, boolean inCheck) {
     }
 
     record AnalysisInfo(String bestMove, Double evaluation, List<String> principalVariation) {

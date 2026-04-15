@@ -198,12 +198,12 @@ public class StockfishEngineService implements ChessEngineService {
         }
 
         PositionInfo describePosition() throws IOException {
-            String fen = readCurrentFen();
-            if (fen == null) {
+            PositionSnapshot snapshot = readPositionSnapshot();
+            if (snapshot == null || snapshot.fen() == null) {
                 throw new ApiException(HttpStatus.BAD_GATEWAY, "stockfish_no_fen");
             }
             Set<String> legalMoves = collectLegalMovesWithPerft();
-            return new PositionInfo(fen, legalMoves);
+            return new PositionInfo(snapshot.fen(), legalMoves, snapshot.inCheck());
         }
 
         AnalysisInfo analyze(int moveTimeMs) throws IOException {
@@ -271,16 +271,27 @@ public class StockfishEngineService implements ChessEngineService {
         }
 
         private String readCurrentFen() throws IOException {
+            PositionSnapshot snapshot = readPositionSnapshot();
+            return snapshot == null ? null : snapshot.fen();
+        }
+
+        private PositionSnapshot readPositionSnapshot() throws IOException {
             send("d");
             send("isready");
             List<String> output = readUntilCollect(line -> "readyok".equals(line.trim()), commandTimeoutMs);
+            String fen = null;
+            boolean inCheck = false;
             for (String line : output) {
                 String trimmed = line.trim();
                 if (trimmed.startsWith("Fen:")) {
-                    return trimmed.substring("Fen:".length()).trim();
+                    fen = trimmed.substring("Fen:".length()).trim();
+                }
+                if (trimmed.startsWith("Checkers:")) {
+                    String checkers = trimmed.substring("Checkers:".length()).trim();
+                    inCheck = !checkers.isBlank() && !"-".equals(checkers);
                 }
             }
-            return null;
+            return fen == null ? null : new PositionSnapshot(fen, inCheck);
         }
 
         private boolean isWhiteToMove(String fen) {
@@ -414,6 +425,9 @@ public class StockfishEngineService implements ChessEngineService {
                         : Math.copySign(Math.max(1.0, 100.0 - Math.min(99, Math.abs(mateIn))), mateIn);
                 return whiteToMove ? evaluation : -evaluation;
             }
+        }
+
+        private record PositionSnapshot(String fen, boolean inCheck) {
         }
     }
 }
